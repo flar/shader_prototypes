@@ -31,7 +31,7 @@ class Uniform {
   String toString() => 'Uniform($type, $name)';
 }
 
-parse(String shaderPath) {
+void parse(String shaderPath) {
   File shaderFile = File(shaderPath);
   if (!shaderFile.existsSync()) {
     print("Shader file '$shaderPath' does not exist");
@@ -46,7 +46,7 @@ parse(String shaderPath) {
     lineNumber++;
     line = line.trim();
     line = line.replaceFirst(RegExp(r'//.*$'), '');
-    List<String> words = line.split(RegExp(r'[ ]+'));
+    List<String> words = line.split(RegExp(r' +'));
     if (words.length >= 3 && words[0] == 'uniform' && words[2].endsWith(';')) {
       String name = words[2].substring(0, words[2].length - 1);
       switch (words[1]) {
@@ -67,7 +67,7 @@ parse(String shaderPath) {
           uniformBase += 1;
           break;
         default:
-          print('Unrecognized uniform declaration: $line');
+          print('Unrecognized uniform declaration at line $lineNumber: $line');
       }
     }
   }
@@ -118,19 +118,17 @@ parse(String shaderPath) {
   sink.writeln("import 'package:shader_prototypes/shader_prototypes.dart';");
   sink.writeln();
   sink.writeln('class $shaderClassName {');
-  sink.writeln('  static FragmentProgram? _program;');
-  sink.writeln();
   sink.writeln('  $shaderClassName() {');
   sink.writeln('    shader = _program!.fragmentShader();');
   dumpLines(sink, initLines);
   sink.writeln('  }');
   sink.writeln();
+  sink.writeln('  late final FragmentShader shader;');
   dumpLines(sink, getLines);
   sink.writeln();
   dumpLines(sink, variableLines);
   sink.writeln();
-  sink.writeln('  late final FragmentShader shader;');
-  sink.writeln();
+  sink.writeln('  static FragmentProgram? _program;');
   sink.writeln('  static Future<void> init() async {');
   sink.writeln("    _program = await FragmentProgram.fromAsset('$shaderPath');");
   sink.writeln('  }');

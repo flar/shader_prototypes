@@ -45,7 +45,7 @@ class UniformVec4 {
         w = v;
         break;
       default:
-        throw RangeError('vec4 only has 4 coordinates');
+        throw RangeError('$index out of range');
     }
   }
 

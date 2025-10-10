@@ -1,13 +1,15 @@
 import 'dart:ui';
 
-class UniformVec2 {
-  UniformVec2(this.shader, this.base);
+class UniformVec3 {
+  UniformVec3(this.shader, this.base);
 
   set x(double x) => shader.setFloat(base + 0, x);
   set y(double y) => shader.setFloat(base + 1, y);
+  set z(double z) => shader.setFloat(base + 2, z);
 
   set s(double s) => x = s;
   set t(double t) => y = t;
+  set p(double p) => z = p;
 
   set xy(Offset o) { x = o.dx; y = o.dy; }
   set st(Offset o) => xy = o;
@@ -19,6 +21,9 @@ class UniformVec2 {
         break;
       case 1:
         y = v;
+        break;
+      case 2:
+        z = v;
         break;
       default:
         throw RangeError('$index out of range');

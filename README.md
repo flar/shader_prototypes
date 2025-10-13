@@ -32,7 +32,7 @@ to set the uniforms as fields, such as:
 ```
 
 where `uColor`, `uMix` and `uPos` are the names used in the `.frag` file
-for uniforms of types `vec4`, `float`, `vec2` corresondingly.
+for uniforms of types `vec4`, `float`, `vec2` correspondingly.
 
 ## Getting started
 
@@ -52,7 +52,7 @@ dart run shader_prototypes:generate_prototypes
 ```
 
 That command will scan your `pubspec.yaml` file for the list of shaders you've
-decoared and create class prototypes for your shaders within your project
+declared and create class prototypes for your shaders within your project
 in the `lib/src/gen/shader_prototypes` subdirectory, or you can override this
 location using the `--output-dir` option.
 

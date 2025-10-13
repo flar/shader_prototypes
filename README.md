@@ -57,7 +57,7 @@ in the `lib/src/gen/shader_prototypes` subdirectory, or you can override this
 location using the `--output-dir` option.
 
 Once this script has done its work, you need to run it manually every time
-you adjust the naming, ordering, or number of your uniforms in your `.frag`
+you adjust the naming, ordering, or number of uniforms in your `.frag`
 files. You can run it every time you make any change to these files, but the
 only changes that affect the script's output are changes to the uniforms.
 

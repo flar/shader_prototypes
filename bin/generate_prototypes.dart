@@ -19,7 +19,7 @@ void main(List<String> args) async {
   if (argResults.flag('help')) {
     print('A utility to generate Dart language class definitions from fragment shader source files.');
     print('');
-    print('Usage: generate_prototypes [arguments]');
+    print('Usage: dart run shader_prototypes:generate_prototypes [arguments]');
     print('');
     print('Global options:');
     print(parser.usage);

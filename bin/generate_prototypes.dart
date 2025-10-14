@@ -169,28 +169,23 @@ List<String> generatePrototypeFile(String shaderPath, List<Uniform> uniforms, Li
       .replaceAllMapped(RegExp(r'^([a-zA-Z])'), (Match m) => m[1]!.toUpperCase());
   List<String> initLines = <String>[];
   List<String> accessLines = <String>[];
-  List<String> variableLines = <String>[];
   for (var uniform in uniforms) {
     switch (uniform.type) {
       case UniformType.vec2:
-        initLines.add('_${uniform.name} = UniformVec2(shader, ${uniform.base});');
-        accessLines.add('UniformVec2 get ${uniform.name} => _${uniform.name};');
-        variableLines.add('late final UniformVec2 _${uniform.name};');
+        initLines.add('${uniform.name} = UniformVec2(shader, ${uniform.base});');
+        accessLines.add('late final UniformVec2 ${uniform.name};');
         break;
       case UniformType.vec3:
-        initLines.add('_${uniform.name} = UniformVec3(shader, ${uniform.base});');
-        accessLines.add('UniformVec3 get ${uniform.name} => _${uniform.name};');
-        variableLines.add('late final UniformVec3 _${uniform.name};');
+        initLines.add('${uniform.name} = UniformVec3(shader, ${uniform.base});');
+        accessLines.add('late final UniformVec3 ${uniform.name};');
         break;
       case UniformType.vec4:
-        initLines.add('_${uniform.name} = UniformVec4(shader, ${uniform.base});');
-        accessLines.add('UniformVec4 get ${uniform.name} => _${uniform.name};');
-        variableLines.add('late final UniformVec4 _${uniform.name};');
+        initLines.add('${uniform.name} = UniformVec4(shader, ${uniform.base});');
+        accessLines.add('late final UniformVec4 ${uniform.name};');
         break;
       case UniformType.mat4:
         initLines.add('_${uniform.name} = UniformMat4(shader, ${uniform.base});');
-        accessLines.add('UniformMat4 get ${uniform.name} => _${uniform.name};');
-        variableLines.add('late final UniformMat4 _${uniform.name};');
+        accessLines.add('late final UniformMat4 ${uniform.name};');
         break;
       case UniformType.float:
         accessLines.add('set ${uniform.name}(double value) => shader.setFloat(${uniform.base}, value);');
@@ -215,10 +210,8 @@ List<String> generatePrototypeFile(String shaderPath, List<Uniform> uniforms, Li
     '  }',
     '',
     '  late final FragmentShader shader;',
-    for (String line in accessLines)
-      '  $line',
     '',
-    for (String line in variableLines)
+    for (String line in accessLines)
       '  $line',
     '',
     '  static FragmentProgram? _program;',

@@ -34,9 +34,9 @@ class UniformMat4 {
   UniformMat4(this.shader, this.base) {
     _columns = <UniformVec4>[
       UniformVec4(shader, base + 0),
-      UniformVec4(shader, base + 1),
-      UniformVec4(shader, base + 2),
-      UniformVec4(shader, base + 3),
+      UniformVec4(shader, base + 4),
+      UniformVec4(shader, base + 8),
+      UniformVec4(shader, base + 12),
     ];
   }
 

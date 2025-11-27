@@ -2,19 +2,26 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:typed_data';
 import 'dart:ui';
 
-import 'package:flutter/rendering.dart';
-import 'package:shader_prototypes/src/uniform_vec4.dart';
+import 'package:shader_prototypes/shader_prototypes.dart';
 
 /// A utility class to manage the uniform fields of a `mat4` uniform in
 /// a shader `.frag` file.
 ///
-/// This class provides shader language style access to the mat4 using
-/// the column based indexing of the structure as if it were either
-/// a 4x4 matrix, or a list of 4 vec4 fields.
-class UniformMat4 {
+/// This class also subclasses the base Mat4 object providing read and write
+/// access to the data. Though the data is not fetched from the shader and
+/// instead is remembered by the base class which means the data can get out
+/// of sync if multiple Mat4 objects are instantiated with the same shader
+/// and base offset, or if the shader uniforms are set using other means.
+/// If this class is used to manage shader uniform data, then no other
+/// mechanisms should be used to modify that uniform data.
+///
+/// See also:
+///
+/// * [FragmentShader.setFloat] which can also update the uniform values in
+///   the supplied [shader] object.
+class UniformMat4 extends Mat4 {
   /// Instantiate a wrapper that will provide column-by-column access to
   /// the mat4 using indexing to provide per-column [UniformVec4] objects,
   /// which also then provide a 2D matrix indexing through the indexing
@@ -31,34 +38,15 @@ class UniformMat4 {
   ///
   /// * [FragmentShader.setFloat], used to update the uniform values in
   ///   the supplied [shader] object.
-  UniformMat4(this.shader, this.base) {
-    _columns = <UniformVec4>[
+  UniformMat4(this.shader, this.base)
+  : super.using(
       UniformVec4(shader, base + 0),
       UniformVec4(shader, base + 4),
       UniformVec4(shader, base + 8),
-      UniformVec4(shader, base + 12),
-    ];
-  }
-
-  /// Get the [UniformVec4] view of the indexed column of the mat4.
-  UniformVec4 operator [](int index) => _columns[index];
-
-  /// Set the entire matrix from the matrix storage of the given [Matrix4].
-  set matrix(Matrix4 matrix) => list64 = matrix.storage;
-  /// Set the entire matrix from the column major Float list.
-  set list64(Float64List storage) {
-    for (int i = 0; i < 16; i++) {
-      shader.setFloat(base + i, storage[i]);
-    }
-  }
-
+      UniformVec4(shader, base + 12));
 
   /// The [FragmentShader] instance in which the associated mat4 is a uniform.
   final FragmentShader shader;
   /// The integer index base of the associated mat4 uniform within the shader.
   final int base;
-
-  // The private internal list of the 4 [UniformVec4] instances for the 4
-  // columns of the matrix.
-  late final List<UniformVec4> _columns;
 }

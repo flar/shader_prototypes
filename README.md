@@ -53,6 +53,7 @@ Once you have your shaders created, invoke the prototype generator script from
 the package using:
 
 ```shell
+dart pub global activate shader_prototypes
 dart run shader_prototypes:generate_prototypes
 ```
 

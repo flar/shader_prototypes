@@ -2,21 +2,33 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
-import 'dart:developer' as dev;
+import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
 
 import 'package:args/args.dart';
+import 'package:logging/logging.dart';
 import 'package:yaml/yaml.dart';
 
 late ArgResults argResults;
+Logger _logger = Logger('GeneratePrototypes');
 
 String getArtifactsPath() {
   String path = Platform.environment['PATH'] ?? 'PATH=';
   List<String> pathDirs = path.replaceAll('PATH=', '').split(':');
   for (String dir in pathDirs) {
     if (dir.endsWith('bin/cache/dart-sdk/bin')) {
-      return dir.replaceAll(r'dart-sdk/bin', 'artifacts/engine/darwin-x64');
+      Directory binDir = Directory(dir.replaceAll('cache/dart-sdk/bin', ''));
+      if (!binDir.existsSync()) {
+        continue;
+      }
+      for (var child in binDir.listSync(recursive: true)) {
+        if (child is File) {
+          if (child.uri.pathSegments.last == 'impellerc') {
+            return child.parent.path;
+          }
+        }
+      }
     }
   }
   throw 'impellerc not found';
@@ -69,8 +81,15 @@ void main(List<String> args) async {
     defaultsTo: false,
     help: 'Rewrite shader prototype files without checking previous contents',
   );
+  parser.addFlag(
+    'verbose',
+    abbr: 'v',
+    defaultsTo: false,
+    help: 'Verbose output from logging',
+  );
   parser.addFlag('help', abbr: 'h');
   argResults = parser.parse(args);
+
   if (argResults.flag('help')) {
     sinkAllLines(stdout, <String>[
       'A utility to generate Dart language class definitions from'
@@ -83,6 +102,12 @@ void main(List<String> args) async {
     ]);
     return;
   }
+
+  hierarchicalLoggingEnabled = true;
+  _logger.level = argResults.flag('verbose') ? Level.ALL : Level.WARNING;
+  _logger.onRecord.listen((record) {
+    stdout.writeln('${record.level.name}: ${record.time}: ${record.message}');
+  });
 
   final File pubspecFile = File('pubspec.yaml');
   final String yamlString = pubspecFile.readAsStringSync();
@@ -106,29 +131,58 @@ enum UniformType {
   sampler,
 }
 
-class Uniform {
-  Uniform({required this.type, required this.name, required this.base});
+class Uniform implements Comparable<Uniform> {
+  Uniform({required this.type, required this.name, required this.location});
 
   final UniformType type;
   final String name;
-  final int base;
+  // The location taken from the json file which indicates either the location
+  // that the developer declared in their .frag file, or the order in which
+  // the uniform was declared.
+  final int location;
+  // The computed base index of the data for this uniform once all of the
+  // uniforms are read and sorted by location.
+  int? base;
 
   @override
   String toString() => 'Uniform($type, $name)';
+
+  @override
+  int compareTo(Uniform other) {
+    if (type == .sampler) {
+      if (other.type != .sampler) {
+        return -1;
+      }
+    } else if (other.type == .sampler) {
+      return 1;
+    }
+    return location.compareTo(other.location);
+  }
 }
 
 void generatePrototype(String shaderPath) {
   File shaderFile = File(shaderPath);
   if (!shaderFile.existsSync()) {
-    dev.log("Shader file '$shaderPath' does not exist");
+    _logger.severe("Shader file '$shaderPath' does not exist");
     return;
   }
 
-  List<Uniform> uniforms = extractUniformsImpellerc(shaderFile);
+  List<Uniform>? uniforms;
+  try {
+    uniforms = extractUniformsImpellerc(shaderFile);
+  } catch (_) {
+    uniforms = null;
+  }
+  if (uniforms == null) {
+    _logger.warning('Unable to extract uniforms from ${shaderFile.path} using impellerc');
+    _logger.warning('Using less reliable text parsing of the shader file to find uniforms instead');
+    uniforms = extractUniformsText(shaderFile);
+  }
   if (uniforms.isEmpty) {
-    dev.log('No uniforms found in $shaderPath');
+    _logger.info('No uniforms found in $shaderPath');
     return;
   }
+  sortAndIndexUniforms(uniforms);
 
   List<String> headerLines = <String>[
     '// GENERATED CODE - DO NOT MODIFY BY HAND',
@@ -146,7 +200,7 @@ void generatePrototype(String shaderPath) {
     // Check if we can write to it...
     int common = linesInCommon(protoFile, protoFileLines);
     if (common == protoFileLines.length) {
-      dev.log('Prototype $protoPath does not need updating');
+      _logger.info('Prototype $protoPath does not need updating');
       return;
     }
     if (common < headerLines.length) {
@@ -180,14 +234,14 @@ void addToGitIgnore(String path) {
   ignoreFile.writeAsStringSync('$path\n', mode: FileMode.append);
 }
 
-List<Uniform> extractUniformsImpellerc(File shaderFile) {
-  /*
-   * Not working yet...
+List<Uniform>? extractUniformsImpellerc(File shaderFile) {
   Directory temp = Directory(Directory.systemTemp.path).createTempSync('shader_proto');
-  ProcessResult result = Process.runSync('$artifactsPath/impellerc', [
+  String impellercPath = '$artifactsPath/impellerc';
+  ProcessResult result = Process.runSync(impellercPath, [
     '--include=$artifactsPath/shader_lib',
     '--input-type=frag',
     '--iplr',
+    '--json',
     '--runtime-stage-metal',
     '--input=${shaderFile.path}',
     '--spirv=${temp.path}/shader.spirv',
@@ -195,36 +249,88 @@ List<Uniform> extractUniformsImpellerc(File shaderFile) {
     '--sl=${temp.path}/shader.sl',
   ]);
   for (var line in LineSplitter.split(result.stdout)) {
-    print('[STDOUT] $line');
+    _logger.fine('[IMPELLERC][STDOUT] $line');
   }
   for (var line in LineSplitter.split(result.stderr)) {
-    print('[STDERR] $line');
+    _logger.fine('[IMPELLERC][STDERR] $line');
   }
   if (result.exitCode != 0) {
-    print('impellerc failed to compile shader ${shaderFile.path} (exit code ${result.exitCode})');
+    _logger.severe('impellerc failed to compile shader ${shaderFile.path} (exit code ${result.exitCode})');
   } else {
     for (var line in File('${temp.path}/shader.json').readAsLinesSync()) {
-      print('[JSON]: $line');
+      _logger.info('[JSON]: $line');
     }
-    // for (var line in File('${temp.path}/shader.sl').readAsLinesSync()) {
-    //   print('[SL]: $line');
-    // }
     var json = jsonDecode(File('${temp.path}/shader.json').readAsStringSync());
-    print(json['sksl']);
-    if (json['sksl'] != null) {
-      print(json['sksl']['uniforms']);
+    if (json == null) {
+      _logger.severe('impellerc failed to produce a json file from ${shaderFile.path}');
+    } else if (!json["sampled_images"] || !json["uniforms"]) {
+      _logger.info('impellerc failed to reflect uniform entries from ${shaderFile.path}');
+    } else {
+      List<Uniform> uniformsList = <Uniform>[];
+      parseUniforms(json['sampled_images'], uniformsList, shaderFile.path);
+      parseUniforms(json['uniforms'], uniformsList, shaderFile.path);
+      return uniformsList;
     }
   }
-  */
-  return extractUniformsText(shaderFile);
+  return null;
+}
+
+void parseUniforms(dynamic uniformsJsonList, List<Uniform> uniformsList, String shaderPath) {
+  if (uniformsJsonList == null) {
+    _logger.severe('impellerc did not find uniforms in $shaderPath');
+  } else {
+    for (var uniformMap in uniformsJsonList) {
+      Uniform? uniform = parse(uniformMap, shaderPath);
+      if (uniform != null) {
+        uniformsList.add(uniform);
+      } else {
+        _logger.severe('No uniform from $uniformMap');
+      }
+    }
+  }
+}
+
+Uniform? parse(dynamic uniformMap, String shaderPath) {
+  int? location = uniformMap['location'];
+  String? name = uniformMap['name'];
+  UniformType? type;
+  dynamic typeMap = uniformMap['type'];
+  if (typeMap != null) {
+    switch (typeMap['type_name']) {
+      case 'ShaderType::kSampledImage':
+        type = UniformType.sampler;
+        break;
+      case 'ShaderType::kFloat': {
+        int? columns = typeMap['columns'];
+        int? vecSize = typeMap['vec_size'];
+        if (columns == 4) {
+          if (vecSize == 4) {
+            type = UniformType.mat4;
+          }
+        } else if (columns == 1) {
+          type = switch(vecSize) {
+            1 => UniformType.float,
+            2 => UniformType.vec2,
+            3 => UniformType.vec3,
+            4 => UniformType.vec4,
+            _ => null,
+          };
+        }
+      }
+    }
+  }
+  if (name == null || location == null || type == null) {
+    _logger.severe('Malformed uniform: $uniformMap in $shaderPath');
+    return null;
+  }
+  return Uniform(name: name, location: location, type: type);
 }
 
 List<Uniform> extractUniformsText(File shaderFile) {
   List<Uniform> uniforms = [];
   List<String> lines = shaderFile.readAsLinesSync();
   int lineNumber = 0;
-  int floatIndex = 0;
-  int samplerIndex = 0;
+  int uniformLocation = 0;
   for (var line in lines) {
     lineNumber++;
     line = line.replaceFirst(RegExp(r'//.*$'), '');
@@ -245,33 +351,27 @@ List<Uniform> extractUniformsText(File shaderFile) {
       switch (word) {
         case 'float':
           uniforms.add(
-              Uniform(type: UniformType.float, name: name, base: floatIndex));
-          floatIndex += 1;
+              Uniform(type: UniformType.float, name: name, location: uniformLocation++));
           break;
         case 'vec2':
           uniforms.add(
-              Uniform(type: UniformType.vec2, name: name, base: floatIndex));
-          floatIndex += 2;
+              Uniform(type: UniformType.vec2, name: name, location: uniformLocation++));
           break;
         case 'vec3':
           uniforms.add(
-              Uniform(type: UniformType.vec3, name: name, base: floatIndex));
-          floatIndex += 3;
+              Uniform(type: UniformType.vec3, name: name, location: uniformLocation++));
           break;
         case 'vec4':
           uniforms.add(
-              Uniform(type: UniformType.vec4, name: name, base: floatIndex));
-          floatIndex += 4;
+              Uniform(type: UniformType.vec4, name: name, location: uniformLocation++));
           break;
         case 'mat4':
           uniforms.add(
-              Uniform(type: UniformType.mat4, name: name, base: floatIndex));
-          floatIndex += 16;
+              Uniform(type: UniformType.mat4, name: name, location: uniformLocation++));
           break;
         case 'sampler2D':
           uniforms.add(Uniform(
-              type: UniformType.sampler, name: name, base: samplerIndex));
-          samplerIndex += 1;
+              type: UniformType.sampler, name: name, location: uniformLocation++));
           break;
         default:
           continue;
@@ -279,13 +379,47 @@ List<Uniform> extractUniformsText(File shaderFile) {
       break;
     }
     if (uniformCount == uniforms.length) {
-      dev.log('Unrecognized uniform declaration at line $lineNumber: $line');
+      _logger.severe('Unrecognized uniform declaration at line $lineNumber: $line');
     }
   }
   return uniforms;
 }
 
+void sortAndIndexUniforms(List<Uniform> uniforms) {
+  uniforms.sort();
+  int samplerBase = 0;
+  int floatBase = 0;
+  for (Uniform uniform in uniforms) {
+    switch (uniform.type) {
+      case .sampler:
+        uniform.base = samplerBase;
+        samplerBase++;
+        break;
+      case .float:
+        uniform.base = floatBase;
+        floatBase++;
+        break;
+      case .vec2:
+        uniform.base = floatBase;
+        floatBase += 2;
+        break;
+      case .vec3:
+        uniform.base = floatBase;
+        floatBase += 3;
+        break;
+      case .vec4:
+        uniform.base = floatBase;
+        floatBase += 4;
+        break;
+      case .mat4:
+        uniform.base = floatBase;
+        floatBase += 16;
+        break;
+    }
+  }
+}
 List<String> generatePrototypeFile(String shaderPath, List<Uniform> uniforms, List<String> headerLines) {
+  uniforms.sort();
   String shaderClassName = shaderPath
       .replaceAll(RegExp(r'.*/'), '')
       .replaceAll('.frag', '')
@@ -356,7 +490,7 @@ int linesInCommon(File protoFile, List<String> newPrototypeLines) {
   int commonLineCount = min(existingLines.length, newPrototypeLines.length);
   for (int i = 0; i < commonLineCount; i++) {
     if (existingLines[i] != newPrototypeLines[i]) {
-      dev.log("header line ${i + 1} in ${protoFile.path} doesn't match expected: "
+      _logger.warning("header line ${i + 1} in ${protoFile.path} doesn't match expected: "
           "${existingLines[i]} != ${newPrototypeLines[i]}");
       return i;
     }

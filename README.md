@@ -30,7 +30,7 @@ This package creates Dart classes to directly set the uniforms on your
 FragmentShader objects when you run a generator command that allow you
 to set the uniforms as fields, such as:
 
-```dart
+```
   myShader.uColor.color = Colors.red;
   myShader.uMix = 3.0;
   myShader.uPos.xy = Offset(10, 15);
@@ -150,7 +150,10 @@ Global options:
 
 ## Additional information
 
-This project is currently in a proof of concept stage and uses very simple text parsing
-of the shaders to determine the offsets of the shader uniforms. Eventually it should use
-the `impellerc` program to produce the uniform offsets in a more reliable way that would
-also involve syntax checking the shader and be more resilient to syntax and line endings.
+This project is currently in a proof of concept stage. It uses a recently added feature of
+`impellerc` to parse the fragment program and output a JSON that contains descriptions of
+the uniforms, which should be fairly robust. If it is run on a version of Flutter that does
+not support that feature then it will back off to a simple text parser to read the fragment
+program files directly and do a simple search for the uniforms. That technique will work on
+all versions of Flutter that include support for custom fragment programs, but it is a
+fairly simple parser that does not support the full syntax of the shader language.

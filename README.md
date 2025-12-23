@@ -157,3 +157,10 @@ not support that feature then it will back off to a simple text parser to read t
 program files directly and do a simple search for the uniforms. That technique will work on
 all versions of Flutter that include support for custom fragment programs, but it is a
 fairly simple parser that does not support the full syntax of the shader language.
+
+## Other similar packages
+
+A more fleshed out version of the gpu vecN and mat4 Dart objects in this package lives in
+the `shader_uniforms` package (see https://github.com/flar/shader_uniforms). This package
+will eventually just use that package for its implementation as it develops into a true
+builder style package.

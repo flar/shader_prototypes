@@ -31,7 +31,26 @@ String getArtifactsPath() {
       }
     }
   }
-  throw 'impellerc not found';
+  throw Exception('impellerc not found');
+}
+
+String getArtifactsPathWin() {
+  String path = Platform.environment['PATH'] ?? '';
+  List<String> pathDirs = path.split(';');
+  for (String dir in pathDirs) {
+    if (!dir.endsWith('flutter\\bin')) {
+      continue;
+    }
+    Directory binDir = Directory(dir);
+    for (var child in binDir.listSync(recursive: true)) {
+      if (child is File) {
+        if (child.uri.pathSegments.last == 'impellerc.exe') {
+          return child.parent.path;
+        }
+      }
+    }
+  }
+  throw Exception('impellerc not found');
 }
 
 dynamic getYaml(YamlMap doc, String spec) {
@@ -65,7 +84,7 @@ String getOutputDir(YamlMap doc) {
   return outputDirArg;
 }
 
-String artifactsPath = getArtifactsPath();
+String artifactsPath = Platform.isWindows ? getArtifactsPathWin() : getArtifactsPath();
 late String outputDir;
 late bool updateGitIgnore;
 
@@ -260,10 +279,10 @@ List<Uniform>? extractUniformsImpellerc(File shaderFile) {
     for (var line in File('${temp.path}/shader.json').readAsLinesSync()) {
       _logger.info('[JSON]: $line');
     }
-    var json = jsonDecode(File('${temp.path}/shader.json').readAsStringSync());
+    Map<String, Object?>? json = jsonDecode(File('${temp.path}/shader.json').readAsStringSync()) as Map<String, Object?>?;
     if (json == null) {
       _logger.severe('impellerc failed to produce a json file from ${shaderFile.path}');
-    } else if (!json["sampled_images"] || !json["uniforms"]) {
+    } else if (!json.containsKey('sampled_images') || !json.containsKey('uniforms')) {
       _logger.info('impellerc failed to reflect uniform entries from ${shaderFile.path}');
     } else {
       List<Uniform> uniformsList = <Uniform>[];
